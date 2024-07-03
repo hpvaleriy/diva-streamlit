@@ -1,151 +1,111 @@
-import streamlit as st
 import pandas as pd
-import math
-from pathlib import Path
+from lightgbm import LGBMClassifier
+import streamlit as st
+
 
 # Set the title and favicon that appear in the Browser's tab bar.
 st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
+    page_title='Dividends predictor'
 )
 
 # -----------------------------------------------------------------------------
 # Declare some useful functions.
 
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
-
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
-
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
-
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
-
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
-
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
-
-    return gdp_df
-
-gdp_df = get_gdp_data()
 
 # -----------------------------------------------------------------------------
 # Draw the actual page
 
 # Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
+st.text('''
+Some explanation here...
 
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
+Classification report for 5% target:
+
+Accuracy: 0.71
+              precision    recall  f1-score   support
+
+       False       0.73      0.85      0.79      2119
+        True       0.64      0.46      0.53      1229
+
+    accuracy                           0.71      3348
+   macro avg       0.68      0.65      0.66      3348
+weighted avg       0.70      0.71      0.69      3348
+''')
 
 # Add some spacing
 ''
 ''
 
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
-
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
 ''
 ''
 ''
 
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
 
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
+@st.cache_data
+def get_model() -> LGBMClassifier:
+    return pd.read_pickle('data/model_v1.pkl')
 
 
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
+@st.cache_data
+def get_industries() -> list:
+    return pd.read_csv('data/industries.csv').to_dict(orient='list')['industry']
 
-st.header(f'GDP in {to_year}', divider='gray')
 
-''
+# decl: 06/07/2024
+# ex: 06/20/2024
+# $0.18
+# Banks
 
-cols = st.columns(4)
+# Integers
+volume = st.number_input('Volume (on Declaration date -1)', format='%i', min_value=1, step=1, value=441195)
+market_cap = st.number_input('Market Cap', format='%i', min_value=1, step=1, value=996169767)
+# Floats
+p_yield = st.number_input('Yield (for now as-is)', format='%0.4f', value=0.0313) # annualized
+close_price_d1 = st.number_input('Close Price (on Declaration date -1)', format='%0.1f', value=21.48)
+close_price_d30 = st.number_input('Close Price (on Declaration date -30)', format='%0.1f', value=22.51)
+close_price_d90 = st.number_input('Close Price (on Declaration date -90)', format='%0.1f', value=22.31)
+# Text selector
+industry = st.selectbox(label='Industry', options=get_industries())
+# Dates
+declaration_date = st.date_input(label='Declaration Date')
+ex_date = st.date_input(label='Ex Date')
 
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
+st.header('Prediction results', divider='gray')
 
-    with col:
-        first_gdp = first_year[gdp_df['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[gdp_df['Country Code'] == country]['GDP'].iat[0] / 1000000000
 
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
+if st.button('Make prediction!'):
+    model = get_model()
 
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+    print('volume: ', volume)
+    print('market_cap: ', market_cap)
+    print('p_yield: ', p_yield)
+    print('close_price_d1: ', close_price_d1)
+    close_price_change_d30 = (close_price_d1 / close_price_d30) - 1
+    close_price_change_d90 = (close_price_d1 / close_price_d90) - 1
+    print('close_price_d30: ', close_price_change_d30)
+    print('close_price_d90: ', close_price_change_d90)
+    print('industry: ', industry)
+    diff_ex_declaration = (ex_date - declaration_date).days
+    print('diff_ex_declaration: ', diff_ex_declaration)
+
+    df = pd.DataFrame(
+        data=[
+            {
+                'volume_declaration_prior_1': volume,
+                'yield': p_yield,
+                'close_price_change_d90': close_price_change_d30,
+                'close_price_change_d30': close_price_change_d90,
+                'industry': industry,
+                'diff_ex_declaration': 15,
+                'market_cap': market_cap
+            }
+        ]
+    )
+
+    df['industry'] = df['industry'].astype('category')
+
+    classification = model.predict(df)[0]
+    classification_score = model.predict(df, raw_score=True)[0]
+
+    st.text(f'The result is: {classification}')
+    st.text(f'With the score: {classification_score}')
