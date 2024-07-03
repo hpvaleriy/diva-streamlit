@@ -1,3 +1,5 @@
+import json
+
 import pandas as pd
 from lightgbm import LGBMClassifier
 import streamlit as st
@@ -16,21 +18,36 @@ st.set_page_config(
 # Draw the actual page
 
 # Set the title that appears at the top of the page.
-st.text('''
-Some explanation here...
+st.text('Classification report for 5% target:')
 
-Classification report for 5% target:
+with open('data/classification_report_v1.json') as file:
+    class_rep = json.load(fp=file)
 
-Accuracy: 0.71
-              precision    recall  f1-score   support
+accuracy = class_rep['accuracy']
+st.text(f'Accuracy: {accuracy}')
+''
+''
 
-       False       0.73      0.85      0.79      2119
-        True       0.64      0.46      0.53      1229
+st.text('"False" cases:')
+prec = class_rep['False']['precision']
+rec = class_rep['False']['recall']
+support = int(class_rep['False']['support'])
 
-    accuracy                           0.71      3348
-   macro avg       0.68      0.65      0.66      3348
-weighted avg       0.70      0.71      0.69      3348
-''')
+st.text(f'Precision: {prec}')
+st.text(f'Recall: {rec}')
+st.text(f'Support: {support}')
+
+''
+''
+
+st.text('"True" cases:')
+prec = class_rep['True']['precision']
+rec = class_rep['True']['recall']
+support = int(class_rep['True']['support'])
+
+st.text(f'Precision: {prec}')
+st.text(f'Recall: {rec}')
+st.text(f'Support: {support}')
 
 # Add some spacing
 ''
